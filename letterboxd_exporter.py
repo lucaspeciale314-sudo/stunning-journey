@@ -21,7 +21,6 @@ class Movie:
     tmdb_id: Optional[str] = None
     imdb_id: Optional[str] = None
     rating: Optional[float] = None
-    liked: bool = False
     date: Optional[str] = None
     tags: Optional[str] = None
 
@@ -53,7 +52,6 @@ class LetterboxdExporter:
                         tmdb_id=row.get('TMDb Id'),
                         imdb_id=row.get('IMDb Id'),
                         rating=rating,
-                        liked=row.get('Liked', '').lower() == 'true',
                         date=row.get('Date'),
                         tags=row.get('Tags')
                     )
@@ -66,36 +64,32 @@ class LetterboxdExporter:
             print(f"✗ Error loading CSV: {e}")
             raise
     
-    def filter_by_rating(self, rating: float) -> List[Movie]:
+    def filter_by_rating(self, movies: List[Movie], rating: float) -> List[Movie]:
         """Filter movies by exact rating."""
-        filtered = [m for m in self.movies if m.rating and m.rating == rating]
+        filtered = [m for m in movies if m.rating and m.rating == rating]
         return filtered
     
-    def filter_by_rating_range(self, min_rating: float, max_rating: float) -> List[Movie]:
+    def filter_by_rating_range(self, movies: List[Movie], min_rating: float, max_rating: float) -> List[Movie]:
         """Filter movies by rating range (inclusive)."""
         filtered = [
-            m for m in self.movies
+            m for m in movies
             if m.rating and m.rating >= min_rating and m.rating <= max_rating
         ]
         return filtered
     
-    def filter_by_liked(self, liked: bool = True) -> List[Movie]:
-        """Filter movies by liked status."""
-        return [m for m in self.movies if m.liked == liked]
-    
-    def filter_by_year(self, start_year: int, end_year: Optional[int] = None) -> List[Movie]:
+    def filter_by_year(self, movies: List[Movie], start_year: int, end_year: Optional[int] = None) -> List[Movie]:
         """Filter movies by year released."""
         filtered = [
-            m for m in self.movies
+            m for m in movies
             if m.year >= start_year
             and (end_year is None or m.year <= end_year)
         ]
         return filtered
     
-    def filter_by_tags(self, tags: List[str], match_all: bool = False) -> List[Movie]:
+    def filter_by_tags(self, movies: List[Movie], tags: List[str], match_all: bool = False) -> List[Movie]:
         """Filter movies by tags. If match_all=True, requires all tags."""
         filtered = []
-        for movie in self.movies:
+        for movie in movies:
             if not movie.tags:
                 continue
             movie_tags = set(tag.strip().lower() for tag in movie.tags.split(','))
@@ -163,10 +157,8 @@ class LetterboxdExporter:
             len([m for m in movies if m.rating])
             if any(m.rating for m in movies) else 0
         )
-        liked_count = len([m for m in movies if m.liked])
         
         print(f"Average Rating: {avg_rating:.2f}")
-        print(f"Liked: {liked_count}/{len(movies)}")
         print(f"\nTop 10 Movies:")
         print(f"{'─'*70}")
         
@@ -177,8 +169,7 @@ class LetterboxdExporter:
         )[:10]
         
         for i, movie in enumerate(sorted_movies, 1):
-            liked_str = "❤️" if movie.liked else ""
-            print(f"{i:2d}. {movie.name} ({movie.year}) - {movie.rating}★ {liked_str}")
+            print(f"{i:2d}. {movie.name} ({movie.year}) - {movie.rating}★")
         
         print(f"{'='*70}\n")
 
@@ -227,11 +218,8 @@ Examples:
   # Export movies rated 4.0 stars or higher
   python letterboxd_exporter.py ratings.csv -r 4.0:
   
-  # Export only liked movies
-  python letterboxd_exporter.py ratings.csv -l
-  
-  # Export 4+ star liked movies from 2015 onwards
-  python letterboxd_exporter.py ratings.csv -r 4.0: -l --year-from 2015
+  # Export 4+ star movies from 2015 onwards
+  python letterboxd_exporter.py ratings.csv -r 4.0: --year-from 2015
   
   # Export as plain text (URIs only)
   python letterboxd_exporter.py ratings.csv -r 4.0:5.0 --txt
@@ -264,12 +252,6 @@ Examples:
     )
     
     parser.add_argument(
-        '-l', '--liked',
-        action='store_true',
-        help='Only include liked movies'
-    )
-    
-    parser.add_argument(
         '--year-from',
         type=int,
         help='Filter movies from this year onwards'
@@ -296,7 +278,7 @@ Examples:
     parser.add_argument(
         '--summary',
         action='store_true',
-        default=True,
+        default=False,
         help='Display summary statistics'
     )
     
@@ -315,7 +297,7 @@ Examples:
             
             if min_rating == max_rating:
                 # Exact rating
-                filtered = exporter.filter_by_rating(min_rating)
+                filtered = exporter.filter_by_rating(filtered, min_rating)
                 print(f"✓ Filtered by exact rating = {min_rating}: {len(filtered)} movies")
             else:
                 # Range
@@ -323,25 +305,21 @@ Examples:
                     min_rating = 0.0
                 if max_rating is None:
                     max_rating = 5.0
-                filtered = exporter.filter_by_rating_range(min_rating, max_rating)
+                filtered = exporter.filter_by_rating_range(filtered, min_rating, max_rating)
                 print(f"✓ Filtered by rating {min_rating}-{max_rating}: {len(filtered)} movies")
         except ValueError as e:
             print(f"✗ Invalid rating argument: {e}")
             return
     
-    if args.liked:
-        filtered = exporter.filter_by_liked(True)
-        print(f"✓ Filtered by liked: {len(filtered)} movies")
-    
     if args.year_from or args.year_to:
         year_from = args.year_from or 0
         year_to = args.year_to
-        filtered = exporter.filter_by_year(year_from, year_to)
+        filtered = exporter.filter_by_year(filtered, year_from, year_to)
         print(f"✓ Filtered by year {year_from}-{year_to or 'present'}: {len(filtered)} movies")
     
     if args.tags:
         tags = [t.strip() for t in args.tags.split(',')]
-        filtered = exporter.filter_by_tags(tags)
+        filtered = exporter.filter_by_tags(filtered, tags)
         print(f"✓ Filtered by tags {tags}: {len(filtered)} movies")
     
     # Export
